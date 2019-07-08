@@ -1,91 +1,59 @@
 import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
+from htmd.ui import *
+from htmd.vmdviewer import getCurrentViewer
 
 class TicTac4(gym.Env):
-	metadata = {'render.modes': ['human']}
+    metadata = {'render.modes': ['human']}
 
+    def __init__(self):
+        [os.remove(i) for i in glob("/home/alejandro/virtual_chemist/snapshots/vmdscene*.tga")]
+        self.mol = Molecule('3iej') #this should be a roulette wheel
+        self.mol.filter('chain A')
+        self.mol.filter('not water')
+        self.mol.reps.add('protein',style='Licorice',color='16')
+        self.mol.reps.add('not protein',style='Licorice',color='8')
+        self.mol.view()
+        first_caption = self.mol._moveVMD(action='init')
+        self.state = first_caption
+        self.counter = 0
+        self.done = 0
+        self.reward = 0
+        self.add = [0, 0]
 
-	def __init__(self):
-		self.state = []
-		for i in range(3):
-			self.state += [[]]
-			for j in range(3):
-				self.state[i] += ["-"]
-		self.counter = 0
-		self.done = 0
-		self.add = [0, 0]
-		self.reward = 0
+    def check(self):
+        whites = len(np.where(self.state>.7)[0])
+        print('whites',whites)
+        total = self.state.shape[0] * self.state.shape[1]
+        coef = (whites / total) * 100
+        self.reward = coef * 0.1 #/ self.counter) * 0.1
+        
+        if self.done:
+            self.reward = coef #/ self.counter
 
-	def check(self):
+    def step(self, target):
+        if target=='submit':
+            self.done = True
+            self.check()
+            return [self.state, self.reward, self.done, self.add]
+        
 
-		if(self.counter<5):
-			return 0
-		for i in range(3):
-			if(self.state[i][0] != "-" and self.state[i][1] == self.state[i][0] and self.state[i][1] == self.state[i][2]):
-				if(self.state[i][0] == "o"):
-					return 1
-				else:
-					return 2
-			if(self.state[0][i] != "-" and self.state[1][i] == self.state[0][i] and self.state[1][i] == self.state[2][i]):
-				if(self.state[0][i] == "o"):
-					return 1
-				else:
-					return 2
-		if(self.state[0][0] != "-" and self.state[1][1] == self.state[0][0] and self.state[1][1] == self.state[2][2]):
-			if(self.state[0][0] == "o"):
-				return 1
-			else:
-				return 2
-		if(self.state[0][2] != "-" and self.state[0][2] == self.state[1][1] and self.state[1][1] == self.state[2][0]):
-			if(self.state[1][1] == "o"):
-				return 1
-			else:
-				return 2
+        self.state = self.mol._moveVMD(action=target)
+        self.counter += 1
+        self.render()
+        self.check() #get reward
+        return [self.state, self.reward, self.done, self.add]
 
+    def reset(self):
+        #reset view!
+        vhandle = getCurrentViewer()
+        vhandle.send("mol delete all") 
+        self.__init__()
+        self.counter = 0
+        self.done = 0
+        self.reward = 0
+        return self.state
 
-
-	def step(self, target):
-		if self.done == 1:
-			print("Game Over")
-			return [self.state, self.reward, self.done, self.add]
-		elif self.state[int(target/3)][target%3] != "-":
-			print("Invalid Step")
-			return [self.state, self.reward, self.done, self.add]
-		else:
-			if(self.counter%2 == 0):
-				self.state[int(target/3)][target%3] = "o"
-			else:
-				self.state[int(target/3)][target%3] = "x"
-			self.counter += 1
-			if(self.counter == 9):
-				self.done = 1;
-			self.render()
-
-		win = self.check()
-		if(win):
-			self.done = 1;
-			print("Player ", win, " wins.", sep = "", end = "\n")
-			self.add[win-1] = 1;
-			if win == 1:
-				self.reward = 100
-			else:
-				self.reward = -100
-
-		return [self.state, self.reward, self.done, self.add]
-
-	def reset(self):
-		for i in range(3):
-			for j in range(3):
-				self.state[i][j] = "-"
-		self.counter = 0
-		self.done = 0
-		self.add = [0, 0]
-		self.reward = 0
-		return self.state
-
-	def render(self):
-		for i in range(3):
-			for j in range(3):
-				print(self.state[i][j], end = " ")
-			print("")
+    def render(self):
+        pass
