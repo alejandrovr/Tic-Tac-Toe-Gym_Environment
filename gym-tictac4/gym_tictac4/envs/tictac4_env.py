@@ -33,16 +33,13 @@ class TicTac4(gym.Env):
         self.reward =  0.0 #hist_reward
         
         if self.done:
-            if 'scalein' in self.history:
-                self.reward = 1.0
-            else:
-                self.reward = -1.0
+            self.reward = len(self.history) * -1.0
 
     def step(self, target):
         target = self.available_actions[target]
         if target not in self.available_actions:
             raise
-
+        self.history.append(target)
         if target=='submit':
             self.done = True
             self.check()
