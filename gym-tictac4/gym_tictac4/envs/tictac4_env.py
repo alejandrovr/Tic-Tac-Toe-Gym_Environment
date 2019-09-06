@@ -76,7 +76,7 @@ class TicTac4(gym.Env):
 
     def step(self, target):
         target = self.available_actions[target]
-        print('nextaction:',target)
+        #print('nextaction:',target)
         if target not in self.available_actions:
             raise
         self.history.append(target)
