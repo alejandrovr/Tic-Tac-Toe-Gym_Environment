@@ -31,11 +31,12 @@ class TicTac4(gym.Env):
         self.mol = crystal.copy()
         self.mol.filter('chain {} and resname {}'.format(levels[selected_level][0],levels[selected_level][1]))
         self.mol.get_rot_bonds()
-        print('LJ:',LJ_potential(self.prot,self.mol))
         self.mol.view()        
         [self.mol._moveVMD(action='scaleout') for i in range(6)]
         #TODO: randomize starting point
         self.available_actions = ['rotx','roty','rotz','switch_dir','movedih','nextdih']
+        #self.available_actions = ['switch_dir','movedih','nextdih']
+        #first_caption = [self.mol._moveVMD(action='nextdih') for i in range(random.randint(1,1))][-1]
         first_caption = self.mol._moveVMD(action='nextdih')
         self.state = first_caption
         self.counter = 0
@@ -44,13 +45,13 @@ class TicTac4(gym.Env):
         self.add = {}
         self.history = []
 
-    def check(self):
+    def check_old(self):
         ljpot = LJ_potential(self.prot,self.mol)
         if ljpot < 1.0: #reward clashes
             self.reward = 10.0
             self.done = True 
             
-        elif self.counter > 5:
+        elif self.counter > 10:
             self.reward = -10.0
             self.done = True
             
@@ -59,17 +60,29 @@ class TicTac4(gym.Env):
             
         return
 
+    def check(self):
+        if 'movedih' in self.history:
+            self.reward = 10.0
+            self.done = True 
+            
+        elif len(self.history) > 1:
+            self.reward = -10.0
+            self.done = True
+            
+        else:
+            self.reward = 0.0
+        return
+
 
     def step(self, target):
         target = self.available_actions[target]
+        print('nextaction:',target)
         if target not in self.available_actions:
             raise
         self.history.append(target)
-        print(self.history)
         #if not submit, update state and compute reward
         self.state = self.mol._moveVMD(action=target)
         self.counter += 1
-        #input('next?')
         self.check() #get reward
         return [self.state, self.reward, self.done, self.add]
 
