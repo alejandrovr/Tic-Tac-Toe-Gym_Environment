@@ -3,6 +3,7 @@ from gym import error, spaces, utils
 from gym.utils import seeding
 from htmd.ui import *
 from htmd.vmdviewer import getCurrentViewer
+from moleculekit.smallmol.smallmollib import SmallMolLib
 import random
 
 def LJ_potential(prot,lig):
@@ -18,26 +19,34 @@ class TicTac4(gym.Env):
     def __init__(self):
         [os.remove(i) for i in glob("/home/alejandro/rl_chemist/snapshots/vmdscene*.tga")]
         
-        levels = {'3iej.pdb':('A','599'),}
-        levels_keys = list(levels.keys())
-        selected_level = random.choice(levels_keys)
+        code = '2gks_1'
+        recep = Molecule('/shared/alejandro/scPDB/{}/protein.mol2'.format(code))
+        recep.filter('protein and noh')
+        recep_clean = recep.copy()
+        poses_ints = []
+        lig = SmallMolLib('/shared/alejandro/redocked_scPDB/docks/v3_{}/docked/outlig1.sdf'.format(code))
+        pose = random.choice(lig)
+        pose_idx = 0
+    
+        htmdpose = pose.toMolecule()
+        site = recep.copy()   
+        htmdpose.set('resname','LIG')
         
-        crystal = Molecule(selected_level)
-        prot = crystal.copy()
-        prot.filter('protein and chain {} and noh and (same residue as within 5 of resname {})'.format(levels[selected_level][0],levels[selected_level][1]))
-        self.prot = prot.copy()
-        self.prot.view(style='Licorice',color=8)
-
-        self.mol = crystal.copy()
-        self.mol.filter('chain {} and resname {}'.format(levels[selected_level][0],levels[selected_level][1]))
-        self.mol.get_rot_bonds()
-        self.mol.view()        
-        [self.mol._moveVMD(action='scaleout') for i in range(6)]
-        #TODO: randomize starting point
-        self.available_actions = ['rotx','roty','rotz','switch_dir','movedih','nextdih']
-        #self.available_actions = ['switch_dir','movedih','nextdih']
-        #first_caption = [self.mol._moveVMD(action='nextdih') for i in range(random.randint(1,1))][-1]
-        first_caption = self.mol._moveVMD(action='nextdih')
+        label = 0
+        if np.random.rand() > 0.5:
+            htmdpose.moveBy([2., 2., 2.])
+            label = 1
+        
+        site.append(htmdpose)
+        site.filter('same residue as within 5 of resname LIG')
+        site.reps.add(sel=' protein and same residue as within 5 of resname LIG',style='QuickSurf')
+        site.reps.add(sel='resname LIG',style='Licorice')
+        site.view(name=str(label))
+        [site._moveVMD(action='scaleout') for i in range(6)]
+        site._moveVMD(action='quicksurf')
+        self.available_actions = ['rotx', 'roty', 'rotz', 'background']
+        self.mol = site.copy()
+        first_caption = self.mol._moveVMD(action='rotz')
         self.state = first_caption
         self.counter = 0
         self.done = 0
@@ -45,27 +54,12 @@ class TicTac4(gym.Env):
         self.add = {}
         self.history = []
 
-    def check_old(self):
-        ljpot = LJ_potential(self.prot,self.mol)
-        if ljpot < 1.0: #reward clashes
-            self.reward = 10.0
-            self.done = True 
-            
-        elif self.counter > 10:
-            self.reward = -10.0
-            self.done = True
-            
-        else:
-            self.reward = 0.0
-            
-        return
-
     def check(self):
-        if 'movedih' in self.history:
+        if 'background' in self.history:
             self.reward = 10.0
             self.done = True 
             
-        elif len(self.history) > 1:
+        elif len(self.history) > 10:
             self.reward = -10.0
             self.done = True
             
