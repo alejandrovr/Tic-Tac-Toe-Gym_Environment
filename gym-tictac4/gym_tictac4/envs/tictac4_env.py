@@ -32,21 +32,27 @@ class TicTac4(gym.Env):
         site = recep.copy()   
         htmdpose.set('resname','LIG')
         
-        label = 0
+        self.label = 0
         if np.random.rand() > 0.5:
             htmdpose.moveBy([2., 2., 2.])
-            label = 1
+            self.label = 1
         
         site.append(htmdpose)
         site.filter('same residue as within 5 of resname LIG')
-        site.reps.add(sel=' protein and same residue as within 5 of resname LIG',style='QuickSurf')
+        site.reps.add(sel=' protein and same residue as within 5 of resname LIG',style='Lines')
         site.reps.add(sel='resname LIG',style='Licorice')
-        site.view(name=str(label))
-        [site._moveVMD(action='scaleout') for i in range(6)]
-        site._moveVMD(action='quicksurf')
-        self.available_actions = ['rotx', 'roty', 'rotz', 'background']
+        site.view(name=str(self.label))
+        [site._moveVMD(action='scaleout') for i in range(1)]
+        #site._moveVMD(action='quicksurf')
+        #self.available_actions = ['rotx', 'roty', 'rotz', 'pred_non_clash', 'pred_clash']
+        self.available_actions = ['rotx', 'pred_non_clash', 'pred_clash']
         self.mol = site.copy()
-        first_caption = self.mol._moveVMD(action='rotz')
+
+        if self.label == 0:
+            first_caption = self.mol._moveVMD(action='background')
+        else:
+            first_caption = self.mol._moveVMD(action='other')
+
         self.state = first_caption
         self.counter = 0
         self.done = 0
@@ -55,16 +61,30 @@ class TicTac4(gym.Env):
         self.history = []
 
     def check(self):
-        if 'background' in self.history:
-            self.reward = 10.0
-            self.done = True 
+        if 'pred_non_clash' in self.history or 'pred_clash' in self.history:
+            if 'pred_non_clash' in self.history and self.label==0:
+                self.reward = 1.0
+
+            elif 'pred_non_clash' in self.history and self.label==1:
+                self.reward = -1.0
+
+            elif 'pred_clash' in self.history and self.label==0:
+                self.reward = -1.0
             
+            elif 'pred_clash' in self.history and self.label==1:
+                self.reward = 1.0
+
+            
+            print('Final reward:', self.reward)
+            self.done = True
+
         elif len(self.history) > 10:
-            self.reward = -10.0
+            self.reward = -1.0
             self.done = True
             
         else:
             self.reward = 0.0
+
         return
 
 
@@ -74,7 +94,6 @@ class TicTac4(gym.Env):
         if target not in self.available_actions:
             raise
         self.history.append(target)
-        #if not submit, update state and compute reward
         self.state = self.mol._moveVMD(action=target)
         self.counter += 1
         self.check() #get reward
@@ -83,7 +102,8 @@ class TicTac4(gym.Env):
     def reset(self):
         #reset view!
         vhandle = getCurrentViewer()
-        #vhandle.send("mol delete all") 
-        vhandle.send("quit") 
+        vhandle.send("mol delete all") 
+        vhandle.send("color Display Background black")
+        #vhandle.send("quit") 
         self.__init__()
         return self.state #first caption
