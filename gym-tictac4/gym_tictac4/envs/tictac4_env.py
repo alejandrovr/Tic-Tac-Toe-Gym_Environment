@@ -5,29 +5,32 @@ from htmd.ui import *
 from htmd.vmdviewer import getCurrentViewer
 from moleculekit.smallmol.smallmollib import SmallMolLib
 import random
-
-def LJ_potential(prot,lig):
-    from scipy.spatial.distance import cdist
-    pcoords = prot.coords.squeeze()
-    ligcoords = lig.coords.squeeze()
-    pl_dists = cdist(pcoords,ligcoords)
-    return np.min(pl_dists)
+import pickle
 
 class TicTac4(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self):
-        [os.remove(i) for i in glob("/home/alejandro/rl_chemist/snapshots/vmdscene*.tga")]
-        
+    def __init__(self, VMD_mol_IDX=0):
+        self.VMD_mol_IDX = VMD_mol_IDX
+        [os.remove(i) for i in glob("/home/alejandro/rl_chemist/snapshots/vmdscene*.tga")]        
+        available_codes = pickle.load(open('/home/alejandro/rl_chemist/available_codes.pkl','rb'))
+        #code = random.choice(available_codes)
         code = '2gks_1'
+        good_code = False
+
+        while not good_code:
+            try:
+                lig = SmallMolLib('/shared/alejandro/redocked_scPDB/docks/v3_{}/docked/outlig1.sdf'.format(code),sanitize=False,fixHs=False)
+                pose = random.choice(lig)
+                good_code = True
+            except:
+                print('This code is not working!')
+                pass
+            
         recep = Molecule('/shared/alejandro/scPDB/{}/protein.mol2'.format(code))
         recep.filter('protein and noh')
         recep_clean = recep.copy()
-        poses_ints = []
-        lig = SmallMolLib('/shared/alejandro/redocked_scPDB/docks/v3_{}/docked/outlig1.sdf'.format(code))
-        pose = random.choice(lig)
-        pose_idx = 0
-    
+
         htmdpose = pose.toMolecule()
         site = recep.copy()   
         htmdpose.set('resname','LIG')
@@ -39,19 +42,15 @@ class TicTac4(gym.Env):
         
         site.append(htmdpose)
         site.filter('same residue as within 5 of resname LIG')
-        site.reps.add(sel=' protein and same residue as within 5 of resname LIG',style='Lines')
-        site.reps.add(sel='resname LIG',style='Licorice')
+        site.reps.add(sel='protein and same residue as within 5 of resname LIG',style='QuickSurf',color=3)
+        site.reps.add(sel='resname LIG',style='Licorice',color=8)
         site.view(name=str(self.label))
-        [site._moveVMD(action='scaleout') for i in range(1)]
-        #site._moveVMD(action='quicksurf')
-        #self.available_actions = ['rotx', 'roty', 'rotz', 'pred_non_clash', 'pred_clash']
-        self.available_actions = ['rotx', 'pred_non_clash', 'pred_clash']
-        self.mol = site.copy()
 
-        if self.label == 0:
-            first_caption = self.mol._moveVMD(action='background')
-        else:
-            first_caption = self.mol._moveVMD(action='other')
+        site._moveVMD(self.VMD_mol_IDX, action='scaleout')
+        site._moveVMD(self.VMD_mol_IDX, action='quicksurf')
+        self.available_actions = ['rotx', 'roty', 'rotz', 'terminate']
+        self.mol = site.copy()
+        first_caption = self.mol._moveVMD(self.VMD_mol_IDX, action='rotx')
 
         self.state = first_caption
         self.counter = 0
@@ -61,25 +60,16 @@ class TicTac4(gym.Env):
         self.history = []
 
     def check(self):
-        if 'pred_non_clash' in self.history or 'pred_clash' in self.history:
-            if 'pred_non_clash' in self.history and self.label==0:
-                self.reward = 1.0
+        whites = (len(self.state[self.state>0.9]) / (224*224) )
+        reward = whites
 
-            elif 'pred_non_clash' in self.history and self.label==1:
-                self.reward = -1.0
-
-            elif 'pred_clash' in self.history and self.label==0:
-                self.reward = -1.0
-            
-            elif 'pred_clash' in self.history and self.label==1:
-                self.reward = 1.0
-
-            
-            print('Final reward:', self.reward)
+        print('#whites',whites)
+        if 'terminate' in self.history:
+            self.reward = reward
             self.done = True
 
         elif len(self.history) > 10:
-            self.reward = -1.0
+            self.reward = reward
             self.done = True
             
         else:
@@ -90,11 +80,10 @@ class TicTac4(gym.Env):
 
     def step(self, target):
         target = self.available_actions[target]
-        #print('nextaction:',target)
         if target not in self.available_actions:
             raise
         self.history.append(target)
-        self.state = self.mol._moveVMD(action=target)
+        self.state = self.mol._moveVMD(self.VMD_mol_IDX, action=target)
         self.counter += 1
         self.check() #get reward
         return [self.state, self.reward, self.done, self.add]
@@ -103,7 +92,8 @@ class TicTac4(gym.Env):
         #reset view!
         vhandle = getCurrentViewer()
         vhandle.send("mol delete all") 
+        self.VMD_mol_IDX += 1
         vhandle.send("color Display Background black")
         #vhandle.send("quit") 
-        self.__init__()
+        self.__init__(VMD_mol_IDX=self.VMD_mol_IDX)
         return self.state #first caption
